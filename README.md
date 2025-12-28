@@ -4,6 +4,10 @@ A new Flutter project.
 
 ## Getting Started
 
+**Click the animation to watch the full demo (with sound)**  
+[![Demo](assets/demo.gif)](assets/demo.mp4)
+
+
 This project is a starting point for a Flutter application.
 
 A few resources to get you started if this is your first Flutter project:
