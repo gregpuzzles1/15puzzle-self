@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Demo](assets/demo.gif)
+![Demo](assets/output.gif)
 
 </div>
 
