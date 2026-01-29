@@ -1,7 +1,10 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const FifteenPuzzleApp());
@@ -15,6 +18,7 @@ class FifteenPuzzleApp extends StatelessWidget {
     return MaterialApp(
       title: '15 Puzzle Solver (IDA*)',
       theme: ThemeData(useMaterial3: true),
+      debugShowCheckedModeBanner: false,
       home: const PuzzlePage(),
     );
   }
@@ -32,7 +36,13 @@ class _PuzzlePageState extends State<PuzzlePage> {
 
   List<int> _tiles = List<int>.generate(16, (i) => (i == 15) ? 0 : i + 1);
   bool _solving = false;
+  bool _shuffling = false;
   bool _stopRequested = false;
+  DateTime? _lastSolveClick;
+  final ScrollController _scrollController = ScrollController();
+  Timer? _scrollTimer;
+  bool _isScrollingUp = false;
+  bool _isScrollingDown = false;
 
   // You can tweak animation speed.
   Duration _stepDelay = const Duration(milliseconds: 500);
@@ -44,6 +54,23 @@ class _PuzzlePageState extends State<PuzzlePage> {
     super.initState();
     // Optional: start with a small shuffle
     _shuffle(60);
+    // Pre-warm the isolate to avoid first-click delay (skip on web)
+    if (!kIsWeb) {
+      _prewarmIsolate();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _prewarmIsolate() async {
+    // Run a trivial solve in background to initialize the isolate
+    final goal = List<int>.generate(16, (i) => (i == 15) ? 0 : i + 1);
+    await compute(_solveIDAEntry, goal);
   }
 
   int get _blankIndex => _tiles.indexOf(0);
@@ -81,13 +108,17 @@ class _PuzzlePageState extends State<PuzzlePage> {
     return _moveByIndex(idx);
   }
 
-  void _shuffle(int steps) {
-    if (_solving) return;
+  void _shuffle(int steps) async {
+    if (_solving || _shuffling) return;
+
+    setState(() {
+      _shuffling = true;
+      _status = 'Shuffling puzzle...';
+    });
 
     final rng = Random();
     setState(() {
       _tiles = List<int>.generate(16, (i) => (i == 15) ? 0 : i + 1);
-      _status = 'Shuffled.';
     });
 
     // Do random valid moves from goal; guarantees solvable.
@@ -120,20 +151,54 @@ class _PuzzlePageState extends State<PuzzlePage> {
       lastBlank = b;
     }
 
-    setState(() {});
+    setState(() {
+      _status = 'Shuffle complete. Ready to solve!';
+    });
+
+    // Add delay to ensure state is settled before allowing solve
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (mounted) {
+      setState(() {
+        _shuffling = false;
+      });
+    }
   }
 
   Future<void> _solveAndAnimate() async {
     if (_solving) return;
 
+    // Debounce: prevent clicks within 300ms
+    final now = DateTime.now();
+    if (_lastSolveClick != null && 
+        now.difference(_lastSolveClick!) < const Duration(milliseconds: 300)) {
+      return;
+    }
+    _lastSolveClick = now;
+
+    // Set flag immediately to prevent race conditions
+    _solving = true;
+
     if (_isGoal()) {
-      setState(() => _status = 'Already solved.');
+      setState(() {
+        _solving = false;
+        _status = 'Already solved.';
+      });
       return;
     }
 
+    // Show immediate feedback
     setState(() {
-      _solving = true;
       _stopRequested = false;
+      _status = 'Starting solver…';
+    });
+
+    // Longer delay on web to ensure UI updates before heavy computation
+    await Future.delayed(Duration(milliseconds: kIsWeb ? 200 : 50));
+
+    if (!mounted) return;
+
+    setState(() {
       _status = 'Solving…';
     });
 
@@ -212,19 +277,95 @@ class _PuzzlePageState extends State<PuzzlePage> {
     });
   }
 
+  void _startContinuousScroll() {
+    _scrollTimer?.cancel();
+    _scrollTimer = Timer.periodic(const Duration(milliseconds: 16), (timer) {
+      if (!mounted || !_scrollController.hasClients) {
+        timer.cancel();
+        return;
+      }
+      
+      const scrollSpeed = 5.0;
+      double newOffset = _scrollController.offset;
+      
+      if (_isScrollingDown) {
+        newOffset += scrollSpeed;
+      } else if (_isScrollingUp) {
+        newOffset -= scrollSpeed;
+      }
+      
+      if (newOffset < 0) newOffset = 0;
+      if (newOffset > _scrollController.position.maxScrollExtent) {
+        newOffset = _scrollController.position.maxScrollExtent;
+      }
+      
+      _scrollController.jumpTo(newOffset);
+    });
+  }
+
+  void _stopContinuousScroll() {
+    _scrollTimer?.cancel();
+    _scrollTimer = null;
+    _isScrollingUp = false;
+    _isScrollingDown = false;
+  }
+
+  void _handleKeyEvent(KeyEvent event) {
+    if (event is KeyDownEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        if (!_isScrollingDown) {
+          _isScrollingDown = true;
+          _isScrollingUp = false;
+          _startContinuousScroll();
+        }
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        if (!_isScrollingUp) {
+          _isScrollingUp = true;
+          _isScrollingDown = false;
+          _startContinuousScroll();
+        }
+      }
+    } else if (event is KeyUpEvent) {
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown && _isScrollingDown) {
+        _stopContinuousScroll();
+      } else if (event.logicalKey == LogicalKeyboardKey.arrowUp && _isScrollingUp) {
+        _stopContinuousScroll();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final boardSize = min(size.width, size.height) * 0.45;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('15 Puzzle (IDA* Solver)'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
+      body: KeyboardListener(
+        focusNode: FocusNode()..requestFocus(),
+        onKeyEvent: _handleKeyEvent,
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: MediaQuery.of(context).size.height + 200,
+                maxWidth: 800,
+              ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+              children: [
+                    const SizedBox(height: 16),
+                    Text(
+                      '15 PUZZLE IDA* SOLVER',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 1.2,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
             _StatusBar(
               status: _status,
               solving: _solving,
@@ -254,12 +395,18 @@ class _PuzzlePageState extends State<PuzzlePage> {
               alignment: WrapAlignment.center,
               children: [
                 FilledButton.icon(
-                  onPressed: _solving ? null : () => _shuffle(120),
+                  onPressed: (_solving || _shuffling) ? null : () => _shuffle(120),
                   icon: const Icon(Icons.shuffle),
                   label: const Text('Shuffle'),
                 ),
                 FilledButton.icon(
-                  onPressed: _solving ? null : _solveAndAnimate,
+                  onPressed: (_solving || _shuffling)
+                      ? null
+                      : () {
+                          if (!_solving && !_shuffling) {
+                            _solveAndAnimate();
+                          }
+                        },
                   icon: const Icon(Icons.play_arrow),
                   label: const Text('Solve (watch it)'),
                 ),
@@ -281,10 +428,207 @@ class _PuzzlePageState extends State<PuzzlePage> {
                       });
                     },
             ),
-          ],
+            const SizedBox(height: 24),
+            const _InfoSection(),
+            const SizedBox(height: 16),
+            const _Footer(),
+            const SizedBox(height: 100), // Extra padding to ensure scrollability
+              ],
+            ),
+          ),
+            ),
+          ),
         ),
       ),
     );
+  }
+}
+
+class _InfoSection extends StatelessWidget {
+  const _InfoSection();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'This is a self-solving 15-puzzle built with Dart/Flutter, implementing the IDA* (Iterative Deepening A*) algorithm.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'IDA* is an optimal pathfinding algorithm that combines the space efficiency of iterative deepening with the guidance of A* search\'s heuristic function. It guarantees finding the shortest solution while using minimal memory by exploring depth-limited searches with progressively increasing thresholds.',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Features',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _BulletPoint(
+            text: 'Automatic puzzle solving using IDA* algorithm with Manhattan distance heuristic',
+            theme: theme,
+          ),
+          _BulletPoint(
+            text: 'Adjustable animation speed via sliding control bar',
+            theme: theme,
+          ),
+          _BulletPoint(
+            text: 'Responsive UI that works across different screen sizes',
+            theme: theme,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Purpose',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Built for training and educational purposes to demonstrate:',
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 8),
+          _BulletPoint(
+            text: 'Algorithm implementation in Flutter',
+            theme: theme,
+          ),
+          _BulletPoint(
+            text: 'Isolate-based computation for responsive UI',
+            theme: theme,
+          ),
+          _BulletPoint(
+            text: 'Interactive animations and state management',
+            theme: theme,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BulletPoint extends StatelessWidget {
+  final String text;
+  final ThemeData theme;
+
+  const _BulletPoint({
+    required this.text,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '• ',
+            style: theme.textTheme.bodyMedium,
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+
+  @override
+  Widget build(BuildContext context) {
+    final currentYear = DateTime.now().year;
+    final endYear = currentYear;
+    final theme = Theme.of(context);
+    
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          Text(
+            '© 2025-$endYear Greg Christian',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          Text(
+            '·',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          InkWell(
+            onTap: () => _launchUrl('https://github.com/gregpuzzles1/15puzzle-self/blob/main/LICENSE'),
+            child: Text(
+              'MIT License',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+          Text(
+            '·',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          InkWell(
+            onTap: () => _launchUrl('https://github.com/gregpuzzles1/15puzzle-self'),
+            child: Text(
+              'GitHub',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+          Text(
+            '·',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+          InkWell(
+            onTap: () => _launchUrl('https://github.com/gregpuzzles1/15puzzle-self/issues'),
+            child: Text(
+              'Report Issue',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _launchUrl(String urlString) async {
+    final url = Uri.parse(urlString);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 }
 
