@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-38V6JDG1HQ"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-38V6JDG1HQ');
+  </script>
+
   <!--
     If you are serving your web app in a path other than the root, change the
     href value below to reflect the base path you are serving from.
@@ -18,7 +28,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="description" content="Interactive self-solving 15-puzzle built with Flutter. Demonstrates the IDA* pathfinding algorithm with Manhattan distance and smooth animated solutions." />
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,8 +39,20 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>fifteen_puzzle_self</title>
+  <title>Self-Solving 15 Puzzle Game – IDA* Algorithm in Flutter</title>
   <link rel="manifest" href="manifest.json">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Self-Solving 15 Puzzle",
+    "applicationCategory": "GameApplication",
+    "operatingSystem": "Web",
+    "description": "A Flutter-based self-solving 15-puzzle demonstrating the IDA* pathfinding algorithm with animated solutions.",
+    "programmingLanguage": "Dart"
+  }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
