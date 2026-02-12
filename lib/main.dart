@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 void main() {
   runApp(const FifteenPuzzleApp());
@@ -156,7 +157,7 @@ class _PuzzlePageState extends State<PuzzlePage> {
     });
 
     // Add delay to ensure state is settled before allowing solve
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(milliseconds: 2500));
     
     if (mounted) {
       setState(() {
@@ -486,6 +487,8 @@ class _InfoSection extends StatelessWidget {
             text: 'Responsive UI that works across different screen sizes',
             theme: theme,
           ),
+          const SizedBox(height: 12),
+          const _YoutubeShortsEmbed(videoId: 'QfObmlSvbsU'),
           const SizedBox(height: 16),
           Text(
             'Purpose',
@@ -544,6 +547,50 @@ class _BulletPoint extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _YoutubeShortsEmbed extends StatefulWidget {
+  final String videoId;
+
+  const _YoutubeShortsEmbed({
+    required this.videoId,
+  });
+
+  @override
+  State<_YoutubeShortsEmbed> createState() => _YoutubeShortsEmbedState();
+}
+
+class _YoutubeShortsEmbedState extends State<_YoutubeShortsEmbed> {
+  late final YoutubePlayerController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = YoutubePlayerController(
+      params: const YoutubePlayerParams(
+        showControls: true,
+        showFullscreenButton: true,
+        mute: false,
+      ),
+    )..cueVideoById(videoId: widget.videoId);
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: YoutubePlayer(
+        controller: _controller,
+        aspectRatio: 16 / 9,
       ),
     );
   }
