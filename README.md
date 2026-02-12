@@ -15,15 +15,11 @@ IDA* is an optimal pathfinding algorithm that combines the space efficiency of i
 - Adjustable animation speed via sliding control bar
 - Responsive UI that works across different screen sizes
 
-<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; max-width: 100%;">
-	<iframe
-		src="https://www.youtube.com/embed/QfObmlSvbsU"
-		title="15 Puzzle Solver Demo"
-		style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0;"
-		allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-		allowfullscreen
-	></iframe>
-</div>
+### Instruction video
+[![Instruction video preview](assets/demo.gif)](https://www.youtube.com/watch?v=QfObmlSvbsU)
+
+- Watch on YouTube: https://www.youtube.com/watch?v=QfObmlSvbsU
+- Download local MP4: [assets/demo.mp4](assets/demo.mp4)
 
 ## Purpose
 Built for training and educational purposes to demonstrate:

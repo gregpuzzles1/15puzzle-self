@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 void main() {
   runApp(const FifteenPuzzleApp());
@@ -488,7 +487,7 @@ class _InfoSection extends StatelessWidget {
             theme: theme,
           ),
           const SizedBox(height: 12),
-          const _YoutubeShortsEmbed(videoId: 'QfObmlSvbsU'),
+          const _InstructionVideoLink(videoId: 'QfObmlSvbsU'),
           const SizedBox(height: 16),
           Text(
             'Purpose',
@@ -552,47 +551,61 @@ class _BulletPoint extends StatelessWidget {
   }
 }
 
-class _YoutubeShortsEmbed extends StatefulWidget {
+class _InstructionVideoLink extends StatelessWidget {
   final String videoId;
 
-  const _YoutubeShortsEmbed({
-    required this.videoId,
-  });
-
-  @override
-  State<_YoutubeShortsEmbed> createState() => _YoutubeShortsEmbedState();
-}
-
-class _YoutubeShortsEmbedState extends State<_YoutubeShortsEmbed> {
-  late final YoutubePlayerController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = YoutubePlayerController(
-      params: const YoutubePlayerParams(
-        showControls: true,
-        showFullscreenButton: true,
-        mute: false,
-      ),
-    )..cueVideoById(videoId: widget.videoId);
-  }
-
-  @override
-  void dispose() {
-    _controller.close();
-    super.dispose();
-  }
+  const _InstructionVideoLink({required this.videoId});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
+    final theme = Theme.of(context);
+    final videoUrl = 'https://www.youtube.com/watch?v=$videoId';
+    final thumbnailUrl = 'https://img.youtube.com/vi/$videoId/hqdefault.jpg';
+
+    return InkWell(
+      onTap: () => _launchVideo(videoUrl),
       borderRadius: BorderRadius.circular(12),
-      child: YoutubePlayer(
-        controller: _controller,
-        aspectRatio: 16 / 9,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Image.network(
+                thumbnailUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  alignment: Alignment.center,
+                  child: Text(
+                    'Open instruction video on YouTube',
+                    style: theme.textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+            Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.6),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.play_arrow, color: Colors.white, size: 36),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _launchVideo(String urlString) async {
+    final url = Uri.parse(urlString);
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
   }
 }
 
